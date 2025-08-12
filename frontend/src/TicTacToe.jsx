@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 
 const winningCombinations = [
-  [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-  [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
-  [0, 4, 8], [2, 4, 6]             // diagonals
+  [0, 1, 2], [3, 4, 5], [6, 7, 8],
+  [0, 3, 6], [1, 4, 7], [2, 5, 8],
+  [0, 4, 8], [2, 4, 6]
 ];
 
 export default function TicTacToe() {
@@ -11,9 +11,10 @@ export default function TicTacToe() {
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
   const [winner, setWinner] = useState(null);
   const [isDraw, setIsDraw] = useState(false);
-
-  const [difficulty, setDifficulty] = useState(null); // difficulty not chosen yet
-  const [mistakeChance, setMistakeChance] = useState(0);
+  const [difficulty, setDifficulty] = useState(null);
+  const [mistakeDelay, setMistakeDelay] = useState(null);
+  const [gameStartTime, setGameStartTime] = useState(null);
+  const [hasMadeMistake, setHasMadeMistake] = useState(false);
 
   const human = "X";
   const bot = "O";
@@ -34,7 +35,6 @@ export default function TicTacToe() {
     if (result === bot) return 10 - depth;
     if (result === human) return depth - 10;
     if (checkDraw(newBoard)) return 0;
-
     if (isMaximizing) {
       let bestScore = -Infinity;
       for (let i = 0; i < 9; i++) {
@@ -42,7 +42,7 @@ export default function TicTacToe() {
           newBoard[i] = bot;
           let score = minimax(newBoard, depth + 1, false);
           newBoard[i] = null;
-          bestScore = Math.max(score, bestScore);
+          bestScore = Math.max(bestScore, score);
         }
       }
       return bestScore;
@@ -53,7 +53,7 @@ export default function TicTacToe() {
           newBoard[i] = human;
           let score = minimax(newBoard, depth + 1, true);
           newBoard[i] = null;
-          bestScore = Math.min(score, bestScore);
+          bestScore = Math.min(bestScore, score);
         }
       }
       return bestScore;
@@ -61,60 +61,60 @@ export default function TicTacToe() {
   };
 
   const botMove = () => {
-    let bestScore = -Infinity;
-    let bestMove = null;
-    let possibleMoves = [];
-
-    // Step 1: First check if player is about to win (high priority block)
+    const now = Date.now();
+    if (!gameStartTime) setGameStartTime(now);
     for (let [a, b, c] of winningCombinations) {
-        const line = [board[a], board[b], board[c]];
-        if (line.filter(v => v === human).length === 2 && line.includes(null)) {
+      const line = [board[a], board[b], board[c]];
+      if (line.filter(v => v === bot).length === 2 && line.includes(null)) {
+        const winIndex = [a, b, c][line.indexOf(null)];
+        const newBoard = [...board];
+        newBoard[winIndex] = bot;
+        setBoard(newBoard);
+        setIsPlayerTurn(true);
+        return;
+      }
+    }
+    for (let [a, b, c] of winningCombinations) {
+      const line = [board[a], board[b], board[c]];
+      if (line.filter(v => v === human).length === 2 && line.includes(null)) {
         const blockIndex = [a, b, c][line.indexOf(null)];
         const newBoard = [...board];
         newBoard[blockIndex] = bot;
         setBoard(newBoard);
         setIsPlayerTurn(true);
-        return; // immediate block, skip mistake logic
-        }
+        return;
+      }
     }
-
-    // Step 2: Evaluate moves normally
+    let possibleMoves = [];
+    let bestScore = -Infinity;
+    let bestMove = null;
     for (let i = 0; i < 9; i++) {
-        if (board[i] === null) {
+      if (board[i] === null) {
         let newBoard = [...board];
         newBoard[i] = bot;
         let score = minimax(newBoard, 0, false);
         possibleMoves.push({ index: i, score });
         if (score > bestScore) {
-            bestScore = score;
-            bestMove = i;
+          bestScore = score;
+          bestMove = i;
         }
-        }
+      }
     }
-
-    let moveToPlay;
-
-    // Step 3: Apply mistake logic only if no urgent block is needed
-    if (Math.random() < mistakeChance) {
-        const nonBestMoves = possibleMoves.filter(m => m.index !== bestMove);
-        if (nonBestMoves.length > 0) {
-          moveToPlay = nonBestMoves[Math.floor(Math.random() * nonBestMoves.length)].index;
-        } else {
-          moveToPlay = bestMove;
-        }
-    } else {
-        moveToPlay = bestMove;
+    let moveToPlay = bestMove;
+    if (!hasMadeMistake && mistakeDelay !== null && now - gameStartTime >= mistakeDelay) {
+      const nonBestMoves = possibleMoves.filter(m => m.index !== bestMove);
+      if (nonBestMoves.length > 0) {
+        moveToPlay = nonBestMoves[Math.floor(Math.random() * nonBestMoves.length)].index;
+        setHasMadeMistake(true);
+      }
     }
-
-    // Step 4: Play chosen move
     if (moveToPlay !== null) {
-        const newBoard = [...board];
-        newBoard[moveToPlay] = bot;
-        setBoard(newBoard);
-        setIsPlayerTurn(true);
+      const newBoard = [...board];
+      newBoard[moveToPlay] = bot;
+      setBoard(newBoard);
+      setIsPlayerTurn(true);
     }
-    };
-
+  };
 
   const handleClick = (index) => {
     if (!isPlayerTurn || board[index] || winner) return;
@@ -145,13 +145,15 @@ export default function TicTacToe() {
     setIsPlayerTurn(true);
     setWinner(null);
     setIsDraw(false);
+    setGameStartTime(null);
+    setHasMadeMistake(false);
   };
 
   const startGameWithDifficulty = (level) => {
     setDifficulty(level);
-    if (level === "easy") setMistakeChance(0.3);  
-    else if (level === "medium") setMistakeChance(0.2); 
-    else if (level === "hard") setMistakeChance(0.1);   
+    if (level === "easy") setMistakeDelay(8000);
+    else if (level === "medium") setMistakeDelay(15000);
+    else if (level === "hard") setMistakeDelay(30000);
   };
 
   if (!difficulty) {
@@ -168,19 +170,12 @@ export default function TicTacToe() {
   return (
     <div style={{ textAlign: "center" }}>
       <h1>Tic Tac Toe ({difficulty.toUpperCase()} Mode)</h1>
-      <div style={{
-        display: "grid", gridTemplateColumns: "repeat(3, 100px)",
-        gap: "5px", justifyContent: "center", marginBottom: "20px"
-      }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 100px)", gap: "5px", justifyContent: "center", marginBottom: "20px" }}>
         {board.map((cell, idx) => (
           <button
             key={idx}
             onClick={() => handleClick(idx)}
-            style={{
-              width: "100px", height: "100px", fontSize: "2rem",
-              cursor: cell || winner ? "default" : "pointer",
-              backgroundColor: "#eee"
-            }}
+            style={{ width: "100px", height: "100px", fontSize: "2rem", cursor: cell || winner ? "default" : "pointer", backgroundColor: "#eee" }}
             disabled={!!cell || !!winner}
           >
             {cell}
